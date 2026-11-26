@@ -112,8 +112,9 @@ body.rep{overflow:hidden}
 <div class="bpf"><label>Bank name<input type="text" id="bpbank" list="bplist" maxlength="80" placeholder="Type any bank name" autocomplete="off"></label>
 <datalist id="bplist"><option value="State Bank of India"><option value="HDFC Bank"><option value="ICICI Bank"><option value="Axis Bank"><option value="Kotak Mahindra Bank"><option value="Punjab National Bank"><option value="Bank of Baroda"><option value="Canara Bank"><option value="Union Bank of India"><option value="IDFC FIRST Bank"><option value="Yes Bank"><option value="IndusInd Bank"><option value="Bank of India"><option value="Federal Bank"><option value="IDBI Bank"></datalist>
 <label>Loan type<select id="bptype"><option>Home Loan</option><option>Personal Loan</option><option>Car Loan</option><option>Education Loan</option><option>Business Loan</option><option>Loan Against Property</option><option>Gold Loan</option><option>Two-Wheeler Loan</option></select></label>
+<label>Loan amount (₹)<input type="number" id="bpamt" min="0" step="any" placeholder="e.g. 1500000"></label>
 <button class="pri" id="bpgo" type="button">Search policy</button></div>
-<div id="bpstat" class="mu" role="status" aria-live="polite"></div><div id="bpactive"></div><div id="bpres"></div><div id="bpapply"></div>
+<div id="bpstat" class="mu" role="status" aria-live="polite"></div><div id="bpactive"></div><div id="bpres"></div><div id="bpfit"></div><div id="bpapply"></div>
 <details class="bpraw"><summary>Raw response and manual import</summary><p class="mu">Paste a JSON response here to review it without calling the API.</p><textarea id="bpjson" rows="4" aria-label="Paste API response JSON"></textarea><div><button type="button" id="bpload">Load pasted JSON</button></div><pre id="bpraw"></pre></details></div>
 </div></div>
 <p class="note">Scoring weights: Character 30%, Capacity 30%, Capital 15%, Collateral 10%, Conditions 15%. Thresholds follow common Indian retail-lending practice (one FOIR limit, default 50%, set in the Credit policy box; bureau score floor 650) and are illustrative. Adjust them to your lender’s policy.</p>
@@ -257,6 +258,7 @@ function calc(){
  $('actions').innerHTML=A.map(a=>'<li class="'+(a.p==='High'?'bad':a.p==='Medium'?'wn':'lo')+'"><span class="pr">'+a.p+'</span><b>'+a.t+'</b><br><span class="d">'+a.d+'</span></li>').join('');
  window.R={v,inc,ex,emi,foirB,foirA,lim,endAge,sc,total,grade,ltv,ml,rec,mo,resid,need,stab,f,hard,cls,title,desc,S,A};
  renderAdvisor(window.R);
+ if(typeof bpFit==='function')bpFit();
 }
 document.getElementById('inputs').addEventListener('input',calc);
 document.getElementById('inputs').addEventListener('change',calc);
@@ -385,11 +387,12 @@ function normalize(payload,bank){
  const F={rate:[],fees:[],amount:[],tenure:[],score:[],income:[],age:[],ltv:[],foir:[],elig:[]},S=[],conf=[],notes=[],unav=[],meta={};
  const cs=(raw,fl)=>srcList(raw).map(s=>{const c=classify(s.url,bank,s.flag!==undefined?s.flag:fl);if(!c)return null;const r={...s,...c};if(!S.some(z=>z.url===r.url))S.push(r);return S.find(z=>z.url===r.url)}).filter(Boolean);
  const cnt=()=>Object.values(F).reduce((a,b)=>a+b.length,0);
- const TXF=[['rate',/interest|\broi\b|p\.a\.|per annum/i,/%/],['fees',/processing fee|fees?\b|charges?\b|prepayment|foreclosure/i,/(%|₹|\brs\b\.?|\binr\b)/i],['amount',/loan amount|up to|upto|maximum|minimum|ranging|lakh|crore/i,/(₹|\brs\b\.?|\binr\b|lakh|crore)/i,/loan|finance|amount/i],['tenure',/tenure|tenor|repayment period|repay/i,/\d+\s*(years?|yrs?|months?)/i],['score',/cibil|credit score/i,/\b[3-8]\d\d\b|900/],['income',/income|salary|earn/i,/(₹|\brs\b\.?|\binr\b|lakh|lpa)/i],['age',/\bage\b|years of age|aged|years old/i,/\b[1-8]\d\b/],['ltv',/\bltv\b|loan[- ]to[- ]value|margin|of the (property|cost|value)/i,/%/],['foir',/foir|obligation|emi.{0,30}income|income.{0,30}emi/i,/%/],['elig',/eligib/i,/./]];
+ const TXF=[['rate',/interest|\broi\b|p\.a\.|per annum/i,/%/],['fees',/processing fee|fees?\b|charges?\b|prepayment|foreclosure/i,/(%|₹|\brs\b\.?|\binr\b)/i],['amount',/loan amount|up to|upto|maximum|minimum|ranging|lakh|crore/i,/(₹|\brs\b\.?|\binr\b|lakh|crore)/i,/loan|finance|amount/i,/\d\s*%/],['tenure',/tenure|tenor|repayment period|repay/i,/\d+\s*(years?|yrs?|months?)/i],['score',/cibil|credit score/i,/\b[3-8]\d\d\b|900/],['income',/income|salary|earn/i,/(₹|\brs\b\.?|\binr\b|lakh|lpa)/i],['age',/\bage\b|years of age|aged|years old/i,/\b[1-8]\d\b/],['ltv',/\bltv\b|loan[- ]to[- ]value|margin|of the (property|cost|value)/i,/%/],['foir',/foir|obligation|emi.{0,30}income|income.{0,30}emi/i,/%/],['elig',/eligib/i,/./]];
  function fromText(t,ds,ai){
-  const per={};
-  String(t).replace(/\s+/g,' ').split(/(?<=[.;!?])\s+(?=[A-Z0-9₹•-])|\s[•|]\s/).map(x=>x.trim()).filter(x=>x.length>=15&&x.length<=300).forEach(x=>{
-   TXF.forEach(([f,a,b,c])=>{if((per[f]||0)<2&&a.test(x)&&b.test(x)&&(!c||c.test(x))){F[f].push({text:x,srcs:ds,role:'',ex:ai?'ai':'text'});per[f]=(per[f]||0)+1}})});
+  const per={},TIER=/collateral|above|upto|up to|below|takeover|girl|women|slab|categor|salaried|self[- ]employed|scheme/i,whole=/interest|\brates?\b|\broi\b/i.test(t);
+  String(t).split(/\n+/).flatMap(l=>l.replace(/^\s*\||\|\s*$/g,'').replace(/\s*\|\s*/g,' ').replace(/\s+/g,' ').split(/(?<=[.;!?])\s+(?=[A-Z0-9₹•-])|\s•\s/)).flatMap(x=>(x.length>120&&(x.match(/%/g)||[]).length>1)?x.split(/(?<=\d%\)?)\s+(?=[A-Z0-9])/):[x]).map(x=>x.trim()).filter(x=>x.length>=12&&x.length<=300).forEach(x=>{
+   TXF.forEach(([f,a,b,c,ex])=>{const cap=(f==='rate'||f==='fees')?4:2;
+    if((per[f]||0)<cap&&(a.test(x)||(f==='rate'&&whole&&/collateral|loan|scheme|salaried|self|girl|women|above|upto|up to|takeover/i.test(x)))&&b.test(x)&&(!c||c.test(x))&&!(ex&&ex.test(x))){F[f].push({text:x,srcs:ds,role:(f==='rate'&&TIER.test(x))?'tier':'',ex:ai?'ai':'text'});per[f]=(per[f]||0)+1}})});
  }
  function toCands(v,ds){
   if(v==null||typeof v==='boolean')return[];
@@ -447,7 +450,7 @@ const ageN=s=>[...String(s).matchAll(/(?<![\d.,])(\d{2})(?!\d)/g)].map(m=>+m[1])
 const NUMF={rate:rateN,score:scoreN,income:incN,tenure:tenN,amount:moneyN,age:ageN,ltv:pn,foir:pn};
 function info(name,cands){
  const m=new Map();
- cands.forEach(c=>{const nums=NUMF[name]?NUMF[name](c.text):[];const sig=(c.role||'')+'|'+(nums.length?nums.join(','):c.text.toLowerCase().replace(/[^a-z0-9.]/g,''));
+ cands.forEach(c=>{const nums=NUMF[name]?NUMF[name](c.text):[];const sig=(c.role||'')+'|'+((nums.length&&c.role!=='tier')?nums.join(','):c.text.toLowerCase().replace(/[^a-z0-9.]/g,''));
   const e=m.get(sig)||{text:c.text,role:c.role||'',ex:c.ex||'',srcs:[]};c.srcs.forEach(s=>{if(!e.srcs.some(x=>x.url===s.url))e.srcs.push(s)});if(!m.has(sig))m.set(sig,e)});
  const list=[...m.values()].map(c=>({...c,cls:c.srcs.length?c.srcs.map(s=>s.cls).sort((a,b)=>RANK[a]-RANK[b])[0]:'unattr'})).sort((a,b)=>RANK[a.cls]-RANK[b.cls]);
  const multi=name==='fees'||name==='elig';
@@ -488,7 +491,7 @@ function bpShow(raw,bank,type){
  h+='<div class="tw"><table class="bpt"><tr><th>Parameter</th><th>Retrieved value</th><th>Status</th><th>Sources</th></tr>';
  FIELDS.forEach(([f,lab])=>{const x=I[f];let v,st,sr='';
   if(x.status==='unavailable'){v='<span class="mu">Not provided by the API</span>';st='<span class="bd na">Unavailable</span>'}
-  else{v=x.list.map(c=>'<div class="bpv">'+(c.role?(c.role==='min'?'Minimum: ':'Maximum: '):'')+(c.ex?'<span class="bd unattr">'+(c.ex==='ai'?'AI summary':'From page text')+'</span> ':'')+esc(c.text.length>230?c.text.slice(0,227)+'…':c.text)+'</div>').join('');
+  else{v=x.list.map(c=>'<div class="bpv">'+(c.role==='min'?'Minimum: ':c.role==='max'?'Maximum: ':'')+(c.ex?'<span class="bd unattr">'+(c.ex==='ai'?'AI summary':'From page text')+'</span> ':'')+esc(c.text.length>230?c.text.slice(0,227)+'…':c.text)+'</div>').join('');
    st=(x.list.some(c=>c.ex)?'<div class="mu">Extracted from page text. Verify on the source.</div>':'')+(x.status==='conflict'?'<span class="bd cf">Conflicting</span>'+(x.pref?'<div class="mu">Official source differs from the others; official value preferred.</div>':'<div class="mu">Different values were returned. Choose one before applying.</div>'):bdg(x.list[0].cls,''));
    sr=x.list.map(c=>'<div class="bpv">'+(x.list.length>1&&c.srcs.length?bdg(c.cls,'')+' ':'')+(c.srcs.length?srcLinks(c.srcs):'<span class="mu">no link</span>')+'</div>').join('')}
   h+='<tr><td>'+lab+'</td><td>'+v+'</td><td>'+st+'</td><td>'+sr+'</td></tr>'});
@@ -497,7 +500,7 @@ function bpShow(raw,bank,type){
  if(N.unav.length)h+='<div class="bpbox warn"><b>Marked unavailable by the API</b><ul>'+N.unav.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ul></div>';
  if(N.notes.length)h+='<div class="bpbox"><b>Notes from the API</b><ul>'+N.notes.map(t=>'<li>'+esc(t)+'</li>').join('')+'</ul></div>';
  if(N.S.length){const ss=[...N.S].sort((a,b)=>RANK[a.cls]-RANK[b.cls]);h+='<div class="bph">Source links</div><ul class="bps">'+ss.map(s=>'<li>'+bdg(s.cls,s.why)+' <a href="'+esc(s.url)+'" target="_blank" rel="noopener noreferrer">'+esc(s.title||s.host)+'</a> <span class="mu">'+esc(s.host)+(s.date?' · '+esc(s.date):'')+'</span></li>').join('')+'</ul>'}
- $('bpres').innerHTML=h;bpStat('');bpApplyUI();
+ $('bpres').innerHTML=h;bpStat('');bpApplyUI();bpFit();
 }
 function sugg(r,x,pool,nums,rolePool){
  if(pool.some(c=>c.ex))return null;
@@ -512,9 +515,10 @@ function bpApplyUI(){
  if(!bpS)return;
  let h='<div class="bph">Apply to the calculations</div><p class="mu">Tick a row and enter or pick a value. Nothing changes until you review and confirm. Applied limits affect the decision, flags and advisor until you reset them.</p><div class="tw"><table class="bpt"><tr><th>Setting</th><th>Current</th><th>Value to apply</th></tr>';
  AP.forEach(r=>{const x=bpS.I[r.f];let pool=x.pref?[x.pref]:x.list;const rp=pool.filter(c=>c.role===r.kind),nums=[];if(rp.length)pool=rp;
-  pool.forEach(c=>NUMF[r.f](c.text).forEach(n=>{if(!nums.some(z=>z.n===n))nums.push({n,cls:c.cls,ex:c.ex})}));
-  const sg=sugg(r,x,pool,nums,rp.length>0);
-  h+='<tr data-r="'+r.id+'"><td><input type="checkbox" class="bpck" aria-label="Apply '+esc(r.lab)+'"> '+esc(r.lab)+'</td><td>'+esc(r.cur())+'</td><td><input type="number" class="bpin" step="any" aria-label="'+esc(r.lab)+'" value="'+(sg==null?'':sg)+'" data-cls="'+(sg==null?'manual':(nums.find(z=>z.n===sg)||{}).cls)+'">'+(x.status==='conflict'&&!x.pref?' <span class="bd cf">Conflicting</span>':'')+'<div>'+nums.slice(0,6).map(z=>'<button type="button" class="chipn" data-r="'+r.id+'" data-n="'+z.n+'" data-cls="'+z.cls+'" data-ex="'+(z.ex||'')+'">'+esc(fmtN(r,z.n))+' '+bdg(z.cls,'')+'</button>').join('')+'</div></td></tr>'});
+  pool.forEach(c=>{if(r.f==='rate'&&/concession|discount|rebate|reduction/i.test(c.text))return;NUMF[r.f](c.text).forEach(n=>{if(!nums.some(z=>z.n===n))nums.push({n,cls:c.cls,ex:c.ex})})});
+  let sg=sugg(r,x,pool,nums,rp.length>0),tnote='',tex='';
+  if(r.id==='rate'){const tm=tierMatch(),rs=tm?[...new Set(tm.matches.map(m=>m.rate))]:[];if(rs.length===1){sg=rs[0];tex='text';tnote='<div class="mu">Suggested for your '+inr(tm.amt)+' loan from the matching tier. Verify on the bank’s page.</div>'}}
+  h+='<tr data-r="'+r.id+'"><td><input type="checkbox" class="bpck" aria-label="Apply '+esc(r.lab)+'"> '+esc(r.lab)+'</td><td>'+esc(r.cur())+'</td><td><input type="number" class="bpin" step="any" aria-label="'+esc(r.lab)+'" value="'+(sg==null?'':sg)+'" data-cls="'+(sg==null?'manual':((nums.find(z=>z.n===sg)||{}).cls||'unverified'))+'" data-ex="'+tex+'">'+tnote+(x.status==='conflict'&&!x.pref?' <span class="bd cf">Conflicting</span>':'')+'<div>'+nums.slice(0,6).map(z=>'<button type="button" class="chipn" data-r="'+r.id+'" data-n="'+z.n+'" data-cls="'+z.cls+'" data-ex="'+(z.ex||'')+'">'+esc(fmtN(r,z.n))+' '+bdg(z.cls,'')+'</button>').join('')+'</div></td></tr>'});
  h+='</table></div><button type="button" class="pri" id="bpreview">Review changes…</button><div id="bpconf"></div><p class="mu">Fees and eligibility text are shown for reference only. The calculator has no matching setting for them.</p>';
  $('bpapply').innerHTML=h;
 }
@@ -546,25 +550,79 @@ function bpReset(){
  if(b.applied.rate)setIn('rate',b.prev.rate);if(b.applied.foir)setIn('foirCap',b.prev.foirCap);
  Object.assign(POLICY,b.prevPol);window.BP=null;calc();bpActive();bpApplyUI();
 }
+const withTimeout=(p,ms)=>new Promise((res,rej)=>{const t=setTimeout(()=>{const e=new Error('timeout');e.name='TimeoutError';rej(e)},ms);p.then(v=>{clearTimeout(t);res(v)},e=>{clearTimeout(t);rej(e)})});
 async function bpSearch(){
- const bank=$('bpbank').value.trim(),type=$('bptype').value;
+ const bank=$('bpbank').value.trim(),type=$('bptype').value,amount=val('amount');
  if(bank.length<2){bpStat('Enter a bank name to search.','warn');return}
- const id=++bpReq,ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),45000);
+ if(!(amount>0)){bpStat('Enter the loan amount you want, then search.','warn');return}
+ const id=++bpReq;
  $('bpgo').disabled=true;bpStat('Searching for '+bank+' '+type+' policy… this can take up to 45 seconds.');
  try{
-  const r=await fetch(BP_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bankName:bank,loanType:type}),signal:ctl.signal});
-  const t=await r.text();if(id!==bpReq)return;
+  const r=await withTimeout(fetch(BP_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bankName:bank,loanType:type,loanAmount:amount})}),45000);
+  const t=await withTimeout(r.text(),45000);if(id!==bpReq)return;
   if(!r.ok)throw new Error('HTTP '+r.status+(t?': '+t.slice(0,200):''));
   bpShow(t,bank,type);
  }catch(e){if(id!==bpReq)return;
-  bpStat(e.name==='AbortError'?'The search timed out after 45 seconds. Please try again.':(e&&e.name==='TypeError')?'Could not reach the policy API. The browser blocked the request (no network, missing CORS headers on the Worker, or this page’s security policy). Open the dashboard from its GitHub Pages address and make sure the Worker allows that origin.':'The policy API returned an error: '+esc(e.message),'err');
- }finally{clearTimeout(to);if(id===bpReq)$('bpgo').disabled=false}
+  const m=String(e&&e.message||e);
+  bpStat(e&&e.name==='TimeoutError'?'The search timed out after 45 seconds. Please try again.':(e&&e.name==='TypeError')?'Could not reach the policy API. The browser blocked the request (no network, missing CORS headers on the Worker, or this page’s security policy). Open the dashboard from its GitHub Pages address and make sure the Worker allows that origin.':'The policy API returned an error: '+esc(m),'err');
+ }finally{if(id===bpReq)$('bpgo').disabled=false}
 }
+function tierMatch(){
+ if(!bpS)return null;const L=bpS.I.rate.list.filter(c=>c.role==='tier');if(!L.length)return null;
+ const best=L.some(c=>c.cls==='official'||c.cls==='regulator')?L.filter(c=>c.cls==='official'||c.cls==='regulator'):L;
+ const amt=val('amount'),sec=val('cq')>0,out={amt,sec,matches:[],skipped:[],concessions:[]};
+ best.forEach(c=>{const t=c.text.replace(/,/g,'');
+  if(/concession|discount|rebate|reduction/i.test(t)){out.concessions.push(c);return}
+  const rate=pn(t)[0];if(rate==null)return;
+  if(/takeover|take[- ]over|balance transfer/i.test(t)){out.skipped.push(c);return}
+  const m=moneyN(t.replace(/\d+(?:\.\d+)?\s*%/g,'')),up=/\b(up\s?to|upto|below|under|less than|not exceeding|maximum|max)\b/i.test(t),ab=/\b(above|over|more than|exceeding|greater than|beyond)\b/i.test(t);
+  let lo=null,hi=null;if(m.length>=2&&!up&&!ab){lo=Math.min(m[0],m[1]);hi=Math.max(m[0],m[1])}else if(m.length&&up&&!ab)hi=m[0];else if(m.length&&ab&&!up)lo=m[0];
+  const sc=/without collateral|unsecured|no collateral|collateral[- ]free|without security/i.test(t)?'none':/with collateral|secured|against collateral|mortgage|with security/i.test(t)?'secured':'';
+  if((lo==null||amt>lo)&&(hi==null||amt<=hi)&&(sc===''||(sc==='none'?!sec:sec)))out.matches.push({c,rate,lo,hi,sc})});
+ return out}
+function reqNum(id){
+ const r=AP.find(z=>z.id===id),x=bpS.I[r.f];if(x.status==='unavailable'||(x.status==='conflict'&&!x.pref))return null;
+ let pool=x.pref?[x.pref]:x.list;const rp=pool.filter(c=>c.role===r.kind);if(rp.length)pool=rp;
+ const nums=[...new Set(pool.flatMap(c=>NUMF[r.f](c.text)))];if(!nums.length)return null;
+ const t=pool.map(c=>c.text).join(' '),ex=pool.some(c=>c.ex);let n;
+ if(nums.length>=2)n=r.kind==='min'?Math.min(...nums):r.kind==='max'?Math.max(...nums):null;
+ else if(!rp.length&&r.kind==='min'&&/max|up to|upto|not exceed/i.test(t)&&!/min|from|at least|above/i.test(t))n=null;
+ else if(!rp.length&&r.kind==='max'&&/min|from|at least|starting|above/i.test(t)&&!/max|up to|upto/i.test(t))n=null;
+ else n=nums[0];
+ return n==null?null:{n,ex}}
+function bpFit(){
+ const a=$('bpamt');if(a&&document.activeElement!==a)a.value=val('amount')||'';
+ const box=$('bpfit');if(!box)return;if(!bpS){box.innerHTML='';return}
+ const amt=val('amount'),ten=val('tenure'),age=val('age'),inc=val('income'),sc=val('score'),ltv=window.R?window.R.ltv:null;
+ let h='<div class="bph">Fit for your loan: '+inr(amt)+' over '+ten+' years</div>';
+ const tm=tierMatch();
+ if(tm){h+='<div class="bpbox"><b>Interest rate for your loan</b> <span class="mu">('+(tm.sec?'secured by collateral':'no collateral')+')</span>';
+  h+=tm.matches.length?'<ul>'+tm.matches.map(m=>'<li>'+bdg(m.c.cls,'')+' '+esc(m.c.text.length>170?m.c.text.slice(0,167)+'…':m.c.text)+'</li>').join('')+'</ul>':'<p class="mu">No retrieved rate tier covers '+inr(amt)+' '+(tm.sec?'with':'without')+' collateral. Check the bank’s page or change the loan details.</p>';
+  if(tm.skipped.length)h+='<p class="mu">Skipped (takeover loans): '+tm.skipped.map(c=>esc(c.text)).join('; ')+'</p>';
+  if(tm.concessions.length)h+='<p class="mu">Possible concession, not included: '+tm.concessions.map(c=>esc(c.text)).join('; ')+'</p>';
+  const rs=[...new Set(tm.matches.map(m=>m.rate))];
+  if(rs.length===1)h+='<button type="button" class="pri" id="bpfillrate" data-n="'+rs[0]+'">Fill '+rs[0]+'% into the apply section</button>';
+  h+='</div>'}
+ const rn=id=>reqNum(id),chk=[],R1=(lab,mine,req,res,ex)=>chk.push({lab,mine,req,res,ex}),miss=[];
+ const J=a=>a.filter(Boolean).join(', ');
+ {const lo=rn('amin'),hi=rn('amax');if(lo||hi)R1('Loan amount',inr(amt),J([lo&&'min '+inr(lo.n),hi&&'max '+inr(hi.n)]),(hi&&amt>hi.n)||(lo&&amt<lo.n)?'no':'yes',(lo&&lo.ex)||(hi&&hi.ex));else miss.push('loan amount')}
+ {const b=rn('ten');if(b)R1('Tenure',ten+' years','max '+b.n+' years',ten>b.n?'no':'yes',b.ex);else miss.push('tenure')}
+ {const b=rn('score');if(b)R1('Credit score',sc,'min '+b.n,sc>=b.n?'yes':'no',b.ex);else miss.push('credit score')}
+ {const b=rn('inc');if(b)R1('Net monthly income',inr(inc),'min '+inr(b.n),inc>=b.n?'yes':'no',b.ex);else miss.push('income')}
+ {const lo=rn('agemin'),hi=rn('agemax');if(lo||hi){const no=(lo&&age<lo.n)||(hi&&age>hi.n);R1('Age',age+' years (maturity at '+(age+ten)+')',J([lo&&'min '+lo.n,hi&&'max '+hi.n]),no?'no':(hi&&age+ten>hi.n)?'check':'yes',(lo&&lo.ex)||(hi&&hi.ex))}else miss.push('age')}
+ {const b=rn('ltv');if(b&&ltv!=null)R1('Loan to value',ltv.toFixed(0)+'%','max '+b.n+'%',ltv>b.n?'no':'yes',b.ex);else if(!b)miss.push('loan to value')}
+ const B={yes:['official','Meets'],no:['cf','Does not meet'],check:['warn','Check']};
+ if(chk.length){const bad=chk.filter(c=>c.res==='no').length;
+  h+='<div class="bpbox'+(bad?' err':'')+'"><b>'+(bad?bad+' of '+chk.length+' retrieved requirement(s) not met':'Meets all '+chk.length+' retrieved requirement(s)')+'</b><div class="tw"><table class="bpt"><tr><th>Check</th><th>Your loan</th><th>Bank requirement</th><th>Result</th></tr>'+chk.map(c=>'<tr><td>'+c.lab+'</td><td>'+esc(c.mine)+'</td><td>'+esc(c.req)+(c.ex?' <span class="mu">(from page text)</span>':'')+'</td><td><span class="bd '+B[c.res][0]+'">'+B[c.res][1]+'</span></td></tr>').join('')+'</table></div>'+(miss.length?'<p class="mu">Not checked (not found or conflicting): '+miss.join(', ')+'.</p>':'')+'</div>'}
+ else h+='<div class="bpbox warn">No numeric limits were found to check your loan against.</div>';
+ box.innerHTML=h}
+$('bpamt').addEventListener('input',()=>{const x=parseFloat($('bpamt').value);if(isFinite(x)&&x>=0)setIn('amount',x)});
 $('bpgo').onclick=bpSearch;
 $('bpbank').addEventListener('keydown',e=>{if(e.key==='Enter')bpSearch()});
 $('bpload').onclick=()=>{const t=$('bpjson').value.trim();if(t)bpShow(t,$('bpbank').value.trim()||'Pasted response',$('bptype').value)};
 $('bp').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
  if(t.classList.contains('chipn')){const tr=t.closest('tr'),i=tr.querySelector('.bpin');i.value=t.dataset.n;i.dataset.cls=t.dataset.cls;i.dataset.ex=t.dataset.ex||'';tr.querySelector('.bpck').checked=true}
+ else if(t.id==='bpfillrate'){const tr=document.querySelector('#bpapply tr[data-r=rate]');if(tr){const i=tr.querySelector('.bpin');i.value=t.dataset.n;i.dataset.cls=((bpS.I.rate.list.find(c=>c.role==='tier')||{}).cls)||'unverified';i.dataset.ex='text';tr.querySelector('.bpck').checked=true;if(tr.scrollIntoView)tr.scrollIntoView({block:'center'})}}
  else if(t.id==='bpreview')bpReview();else if(t.id==='bpconfirm')bpConfirm();
  else if(t.id==='bpcancel'){bpS.pending=null;$('bpconf').innerHTML=''}else if(t.id==='bpreset')bpReset()});
 $('bp').addEventListener('input',e=>{if(e.target.classList.contains('bpin')){e.target.dataset.cls='manual';e.target.dataset.ex='';const c=e.target.closest('tr').querySelector('.bpck');if(e.target.value!=='')c.checked=true}});
