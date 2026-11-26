@@ -377,14 +377,20 @@ function srcList(x){const o=[];(function w(x,d){if(x==null||d>4)return;
   const fl=x.official??x.isOfficial??(/official/i.test(ty)?true:/third|aggreg|news|blog|forum/i.test(ty)?false:undefined);
   if(typeof u==='string'){const m=u.match(/https?:\/\/[^\s)"'<>]+/)||(/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(u.trim())?['https://'+u.trim()]:null);if(m)o.push({url:m[0],title:t,flag:fl,date:x.date??x.retrievedAt??x.lastUpdated})}else if(u)w(u,d+1)}})(x,0);return o}
 const normKey=k=>k.toLowerCase().replace(/[^a-z0-9]/g,'');
-const SRCK=/^(sources?|links?|references?|citations?|urls?|sourceurls?|sourcelinks?|officialsources?|officiallinks?)$/,CONF=/conflict|discrepan|inconsisten|mismatch/,NOTE=/^(notes?|warnings?|disclaimers?|caveats?|summary|message|limitations?|remarks?)$/,UNAVK=/^(unavailable|missing|notfound|notavailable|unavailablefields|missingfields)$/,META=/^(retrievedat|lastupdated|updatedat|timestamp|asof|fetchedat|date|confidence)$/,WRAP=/^(data|result|results|policy|response|output|body|payload|details|loandetails|policydetails|answer|text|content)$/,SKIP=/^(bankname|bank|loantype|type|success|status|ok|query|id)$/;
-const FK=[['score',/credit|cibil|score/],['rate',/interest|^roi|rateofinterest|^rate/],['fees',/fee|charge|prepay|foreclos/],['income',/income|salary|earning/],['ltv',/ltv|loantovalue|margin/],['foir',/foir|emitoincome|obligation|dti/],['tenure',/tenure|tenor|term|repayment|period/],['amount',/amount|limit|quantum|ticket|maxloan|minloan|loansize/],['age',/(^|minimum|maximum|min|max|applicant|borrower)age(limit|criteria|requirement|group|range|atmaturity)?$/],['elig',/eligib|criteria|requirement|conditions/]];
+const SRCK=/^(sources?|links?|references?|citations?|urls?|sourceurls?|sourcelinks?|officialsources?|officiallinks?)$/,CONF=/conflict|discrepan|inconsisten|mismatch/,NOTE=/^(notes?|warnings?|disclaimers?|caveats?|summary|message|limitations?|remarks?)$/,UNAVK=/^(unavailable|missing|notfound|notavailable|unavailablefields|missingfields)$/,META=/^(retrievedat|lastupdated|updatedat|timestamp|asof|fetchedat|date|confidence|publisheddate|publishedtime)$/,WRAP=/^(data|result|results|policy|response|output|body|payload|details|loandetails|policydetails|answer|text|content)$/,SKIP=/^(bankname|bank|loantype|type|success|status|ok|query|id|relevance|relevancescore|rank|position|similarity|responsetime|requestid|favicon|images|followupquestions|usage|credits)$/,TXTK=/^(snippets?|description|rawcontent|excerpts?|passages?|highlights|abstract|pagecontent|markdown)$/;
+const FK=[['score',/credit|cibil/],['rate',/interest|^roi|rateofinterest|^rate/],['fees',/fee|charge|prepay|foreclos/],['income',/income|salary|earning/],['ltv',/ltv|loantovalue|margin/],['foir',/foir|emitoincome|obligation|dti/],['tenure',/tenure|tenor|term|repayment|period/],['amount',/amount|limit|quantum|ticket|maxloan|minloan|loansize/],['age',/(^|minimum|maximum|min|max|applicant|borrower)age(limit|criteria|requirement|group|range|atmaturity)?$/],['elig',/eligib|criteria|requirement|conditions/]];
 const leaf=o=>Object.keys(o).some(k=>/^(value|text|range|min|max|minimum|maximum|from|to|rate|amount|source|sourceurl|url|link|official|unit)$/i.test(k));
 const toText=v=>v==null?[]:typeof v==='string'?[v]:Array.isArray(v)?v.flatMap(toText):typeof v==='object'?[Object.entries(v).map(([k,x])=>k+': '+(typeof x==='object'?JSON.stringify(x):x)).join('; ')]:[String(v)];
 function normalize(payload,bank){
  const F={rate:[],fees:[],amount:[],tenure:[],score:[],income:[],age:[],ltv:[],foir:[],elig:[]},S=[],conf=[],notes=[],unav=[],meta={};
  const cs=(raw,fl)=>srcList(raw).map(s=>{const c=classify(s.url,bank,s.flag!==undefined?s.flag:fl);if(!c)return null;const r={...s,...c};if(!S.some(z=>z.url===r.url))S.push(r);return S.find(z=>z.url===r.url)}).filter(Boolean);
  const cnt=()=>Object.values(F).reduce((a,b)=>a+b.length,0);
+ const TXF=[['rate',/interest|\broi\b|p\.a\.|per annum/i,/%/],['fees',/processing fee|fees?\b|charges?\b|prepayment|foreclosure/i,/(%|₹|\brs\b\.?|\binr\b)/i],['amount',/loan amount|up to|upto|maximum|minimum|ranging|lakh|crore/i,/(₹|\brs\b\.?|\binr\b|lakh|crore)/i,/loan|finance|amount/i],['tenure',/tenure|tenor|repayment period|repay/i,/\d+\s*(years?|yrs?|months?)/i],['score',/cibil|credit score/i,/\b[3-8]\d\d\b|900/],['income',/income|salary|earn/i,/(₹|\brs\b\.?|\binr\b|lakh|lpa)/i],['age',/\bage\b|years of age|aged|years old/i,/\b[1-8]\d\b/],['ltv',/\bltv\b|loan[- ]to[- ]value|margin|of the (property|cost|value)/i,/%/],['foir',/foir|obligation|emi.{0,30}income|income.{0,30}emi/i,/%/],['elig',/eligib/i,/./]];
+ function fromText(t,ds,ai){
+  const per={};
+  String(t).replace(/\s+/g,' ').split(/(?<=[.;!?])\s+(?=[A-Z0-9₹•-])|\s[•|]\s/).map(x=>x.trim()).filter(x=>x.length>=15&&x.length<=300).forEach(x=>{
+   TXF.forEach(([f,a,b,c])=>{if((per[f]||0)<2&&a.test(x)&&b.test(x)&&(!c||c.test(x))){F[f].push({text:x,srcs:ds,role:'',ex:ai?'ai':'text'});per[f]=(per[f]||0)+1}})});
+ }
  function toCands(v,ds){
   if(v==null||typeof v==='boolean')return[];
   if(typeof v==='number')return[{text:String(v),srcs:ds}];
@@ -400,7 +406,7 @@ function normalize(payload,bank){
  function extract(o,ds,d){
   for(const [k,val] of Object.entries(o)){
    const nk=normKey(k);
-   if(SKIP.test(nk))continue;
+   if(SKIP.test(nk)||(nk==='score'&&typeof val==='number'&&val<=1))continue;
    if(nk==='error'){if(val)notes.push(...toText(val));continue}
    if(SRCK.test(nk)){cs(val,/^official/.test(nk)?true:undefined);continue}
    if(CONF.test(nk)){conf.push(...toText(val));continue}
@@ -408,10 +414,11 @@ function normalize(payload,bank){
    if(UNAVK.test(nk)){unav.push(...toText(val));continue}
    if(META.test(nk)){if(typeof val!=='object')meta[nk]=String(val);continue}
    if(WRAP.test(nk)&&d<4){
-    if(typeof val==='string'){const m=val.replace(/```(json)?/gi,'').match(/\{[\s\S]*\}/);if(m){try{extract(JSON.parse(m[0]),ds,d+1)}catch(e){}}continue}
+    if(typeof val==='string'){let done=false;const m=val.replace(/```(json)?/gi,'').match(/\{[\s\S]*\}/);if(m){try{extract(JSON.parse(m[0]),ds,d+1);done=true}catch(e){}}if(!done&&val.length>=40)fromText(val,ds,/^(answer|response|output)$/.test(nk));continue}
     if(Array.isArray(val)){val.forEach(it=>{if(it&&typeof it==='object'){const is=it.source??it.url??it.link??it.sourceUrl??it.href;extract(it,is?cs(is,it.official??it.isOfficial):ds,d+1)}});continue}
     if(val&&typeof val==='object'){extract(val,ds,d+1);continue}
    }
+   if(TXTK.test(nk)){toText(val).forEach(t=>{if(t.length>=40)fromText(t,ds,false)});continue}
    const f=(FK.find(x=>x[1].test(nk))||[])[0];if(!f)continue;
    if(val&&typeof val==='object'&&!Array.isArray(val)&&!leaf(val)&&d<4){const n0=cnt();extract(val,ds,d+1);if(cnt()>n0)continue}
    const role=/^(min|minimum)/.test(nk)?'min':/^(max|maximum)/.test(nk)?'max':'';F[f].push(...toCands(val,ds).map(c=>({...c,role})));
@@ -425,7 +432,7 @@ function normalize(payload,bank){
 }
 /* numeric parsing per parameter */
 const pn=s=>[...String(s).matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.])\s*(?:%|per\s?cent)/gi)].map(m=>+m[1]);
-const rateN=s=>{let a=pn(s);if(!a.length)a=[...String(s).matchAll(/(?<![\d.])(\d{1,2}(?:\.\d+)?)(?![\d.])/g)].map(m=>+m[1]).filter(n=>n>=1&&n<=40);return a};
+const rateN=s=>{let a=pn(s);if(!a.length&&String(s).length<40)a=[...String(s).matchAll(/(?<![\d.])(\d{1,2}(?:\.\d+)?)(?![\d.])/g)].map(m=>+m[1]).filter(n=>n>=1&&n<=40);return a};
 const UM={lakh:1e5,lakhs:1e5,lac:1e5,lacs:1e5,l:1e5,lpa:1e5,crore:1e7,crores:1e7,cr:1e7,crs:1e7,k:1e3,thousand:1e3,million:1e6,mn:1e6};
 function moneyN(s){const t=String(s).replace(/,/g,'');
  const m=[...t.matchAll(/(?<![\d.])(\d+(?:\.\d+)?)(?![\d.])(?!\s*(?:%|per\s?cent|years?|yrs?|months?|days?))\s*(lakhs?|lacs?|lpa|crores?|crs?|thousand|million|mn|k|l)?(?![a-z])/gi)].map(x=>({n:+x[1],u:(x[2]||'').toLowerCase()}));
@@ -441,7 +448,7 @@ const NUMF={rate:rateN,score:scoreN,income:incN,tenure:tenN,amount:moneyN,age:ag
 function info(name,cands){
  const m=new Map();
  cands.forEach(c=>{const nums=NUMF[name]?NUMF[name](c.text):[];const sig=(c.role||'')+'|'+(nums.length?nums.join(','):c.text.toLowerCase().replace(/[^a-z0-9.]/g,''));
-  const e=m.get(sig)||{text:c.text,role:c.role||'',srcs:[]};c.srcs.forEach(s=>{if(!e.srcs.some(x=>x.url===s.url))e.srcs.push(s)});if(!m.has(sig))m.set(sig,e)});
+  const e=m.get(sig)||{text:c.text,role:c.role||'',ex:c.ex||'',srcs:[]};c.srcs.forEach(s=>{if(!e.srcs.some(x=>x.url===s.url))e.srcs.push(s)});if(!m.has(sig))m.set(sig,e)});
  const list=[...m.values()].map(c=>({...c,cls:c.srcs.length?c.srcs.map(s=>s.cls).sort((a,b)=>RANK[a]-RANK[b])[0]:'unattr'})).sort((a,b)=>RANK[a.cls]-RANK[b.cls]);
  const multi=name==='fees'||name==='elig';
  const roles=['','min','max'].map(r=>list.filter(c=>c.role===r));
@@ -481,8 +488,8 @@ function bpShow(raw,bank,type){
  h+='<div class="tw"><table class="bpt"><tr><th>Parameter</th><th>Retrieved value</th><th>Status</th><th>Sources</th></tr>';
  FIELDS.forEach(([f,lab])=>{const x=I[f];let v,st,sr='';
   if(x.status==='unavailable'){v='<span class="mu">Not provided by the API</span>';st='<span class="bd na">Unavailable</span>'}
-  else{v=x.list.map(c=>'<div class="bpv">'+(c.role?(c.role==='min'?'Minimum: ':'Maximum: '):'')+esc(c.text)+'</div>').join('');
-   st=x.status==='conflict'?'<span class="bd cf">Conflicting</span>'+(x.pref?'<div class="mu">Official source differs from the others; official value preferred.</div>':'<div class="mu">Different values were returned. Choose one before applying.</div>'):bdg(x.list[0].cls,'');
+  else{v=x.list.map(c=>'<div class="bpv">'+(c.role?(c.role==='min'?'Minimum: ':'Maximum: '):'')+(c.ex?'<span class="bd unattr">'+(c.ex==='ai'?'AI summary':'From page text')+'</span> ':'')+esc(c.text.length>230?c.text.slice(0,227)+'…':c.text)+'</div>').join('');
+   st=(x.list.some(c=>c.ex)?'<div class="mu">Extracted from page text. Verify on the source.</div>':'')+(x.status==='conflict'?'<span class="bd cf">Conflicting</span>'+(x.pref?'<div class="mu">Official source differs from the others; official value preferred.</div>':'<div class="mu">Different values were returned. Choose one before applying.</div>'):bdg(x.list[0].cls,''));
    sr=x.list.map(c=>'<div class="bpv">'+(x.list.length>1&&c.srcs.length?bdg(c.cls,'')+' ':'')+(c.srcs.length?srcLinks(c.srcs):'<span class="mu">no link</span>')+'</div>').join('')}
   h+='<tr><td>'+lab+'</td><td>'+v+'</td><td>'+st+'</td><td>'+sr+'</td></tr>'});
  h+='</table></div>';
@@ -493,6 +500,7 @@ function bpShow(raw,bank,type){
  $('bpres').innerHTML=h;bpStat('');bpApplyUI();
 }
 function sugg(r,x,pool,nums,rolePool){
+ if(pool.some(c=>c.ex))return null;
  if(!nums.length||(x.status==='conflict'&&!x.pref))return null;
  const u=[...new Set(nums.map(z=>z.n))];if(rolePool)return r.kind==='min'?Math.min(...u):Math.max(...u);if(r.kind==='any')return u.length===1?u[0]:null;
  if(u.length>=2)return r.kind==='min'?Math.min(...u):Math.max(...u);
@@ -504,9 +512,9 @@ function bpApplyUI(){
  if(!bpS)return;
  let h='<div class="bph">Apply to the calculations</div><p class="mu">Tick a row and enter or pick a value. Nothing changes until you review and confirm. Applied limits affect the decision, flags and advisor until you reset them.</p><div class="tw"><table class="bpt"><tr><th>Setting</th><th>Current</th><th>Value to apply</th></tr>';
  AP.forEach(r=>{const x=bpS.I[r.f];let pool=x.pref?[x.pref]:x.list;const rp=pool.filter(c=>c.role===r.kind),nums=[];if(rp.length)pool=rp;
-  pool.forEach(c=>NUMF[r.f](c.text).forEach(n=>{if(!nums.some(z=>z.n===n))nums.push({n,cls:c.cls})}));
+  pool.forEach(c=>NUMF[r.f](c.text).forEach(n=>{if(!nums.some(z=>z.n===n))nums.push({n,cls:c.cls,ex:c.ex})}));
   const sg=sugg(r,x,pool,nums,rp.length>0);
-  h+='<tr data-r="'+r.id+'"><td><input type="checkbox" class="bpck" aria-label="Apply '+esc(r.lab)+'"> '+esc(r.lab)+'</td><td>'+esc(r.cur())+'</td><td><input type="number" class="bpin" step="any" aria-label="'+esc(r.lab)+'" value="'+(sg==null?'':sg)+'" data-cls="'+(sg==null?'manual':(nums.find(z=>z.n===sg)||{}).cls)+'">'+(x.status==='conflict'&&!x.pref?' <span class="bd cf">Conflicting</span>':'')+'<div>'+nums.slice(0,6).map(z=>'<button type="button" class="chipn" data-r="'+r.id+'" data-n="'+z.n+'" data-cls="'+z.cls+'">'+esc(fmtN(r,z.n))+' '+bdg(z.cls,'')+'</button>').join('')+'</div></td></tr>'});
+  h+='<tr data-r="'+r.id+'"><td><input type="checkbox" class="bpck" aria-label="Apply '+esc(r.lab)+'"> '+esc(r.lab)+'</td><td>'+esc(r.cur())+'</td><td><input type="number" class="bpin" step="any" aria-label="'+esc(r.lab)+'" value="'+(sg==null?'':sg)+'" data-cls="'+(sg==null?'manual':(nums.find(z=>z.n===sg)||{}).cls)+'">'+(x.status==='conflict'&&!x.pref?' <span class="bd cf">Conflicting</span>':'')+'<div>'+nums.slice(0,6).map(z=>'<button type="button" class="chipn" data-r="'+r.id+'" data-n="'+z.n+'" data-cls="'+z.cls+'" data-ex="'+(z.ex||'')+'">'+esc(fmtN(r,z.n))+' '+bdg(z.cls,'')+'</button>').join('')+'</div></td></tr>'});
  h+='</table></div><button type="button" class="pri" id="bpreview">Review changes…</button><div id="bpconf"></div><p class="mu">Fees and eligibility text are shown for reference only. The calculator has no matching setting for them.</p>';
  $('bpapply').innerHTML=h;
 }
@@ -519,12 +527,12 @@ function bpReview(){
  document.querySelectorAll('#bpapply tr[data-r]').forEach(tr=>{if(!tr.querySelector('.bpck').checked)return;
   const r=AP.find(a=>a.id===tr.dataset.r),i=tr.querySelector('.bpin'),x=parseFloat(i.value);
   if(!isFinite(x)||x<r.lo||x>r.hi){bad+='<li>'+esc(r.lab)+': enter a value between '+r.lo+' and '+r.hi+'.</li>';return}
-  ch.push({r,x,cls:i.dataset.cls||'manual',from:r.cur()})});
+  ch.push({r,x,cls:i.dataset.cls||'manual',ex:i.dataset.ex,from:r.cur()})});
  const box=$('bpconf');
  if(bad){box.innerHTML='<div class="bpbox err"><ul>'+bad+'</ul></div>';return}
  if(!ch.length){box.innerHTML='<div class="bpbox warn">Tick at least one row to review.</div>';return}
  bpS.pending=ch;
- box.innerHTML='<div class="bpbox warn"><b>Confirm these changes for '+esc(bpS.bank)+' · '+esc(bpS.type)+'</b><ul>'+ch.map(c=>'<li>'+esc(c.r.lab)+': '+esc(c.from)+' → <b>'+esc(fmtN(c.r,c.x))+'</b> '+bdg(c.cls,'')+(['third','unverified','unattr','manual'].includes(c.cls)?' <span class="mu">not from a verified official source</span>':'')+'</li>').join('')+'</ul><button type="button" class="pri" id="bpconfirm">Confirm and apply</button> <button type="button" id="bpcancel">Cancel</button></div>';
+ box.innerHTML='<div class="bpbox warn"><b>Confirm these changes for '+esc(bpS.bank)+' · '+esc(bpS.type)+'</b><ul>'+ch.map(c=>'<li>'+esc(c.r.lab)+': '+esc(c.from)+' → <b>'+esc(fmtN(c.r,c.x))+'</b> '+bdg(c.cls,'')+(['third','unverified','unattr','manual'].includes(c.cls)?' <span class="mu">not from a verified official source</span>':'')+(c.ex?' <span class="mu">taken from page text; verify on the source</span>':'')+'</li>').join('')+'</ul><button type="button" class="pri" id="bpconfirm">Confirm and apply</button> <button type="button" id="bpcancel">Cancel</button></div>';
 }
 function bpConfirm(){
  const ch=bpS&&bpS.pending;if(!ch)return;
@@ -556,10 +564,10 @@ $('bpgo').onclick=bpSearch;
 $('bpbank').addEventListener('keydown',e=>{if(e.key==='Enter')bpSearch()});
 $('bpload').onclick=()=>{const t=$('bpjson').value.trim();if(t)bpShow(t,$('bpbank').value.trim()||'Pasted response',$('bptype').value)};
 $('bp').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
- if(t.classList.contains('chipn')){const tr=t.closest('tr'),i=tr.querySelector('.bpin');i.value=t.dataset.n;i.dataset.cls=t.dataset.cls;tr.querySelector('.bpck').checked=true}
+ if(t.classList.contains('chipn')){const tr=t.closest('tr'),i=tr.querySelector('.bpin');i.value=t.dataset.n;i.dataset.cls=t.dataset.cls;i.dataset.ex=t.dataset.ex||'';tr.querySelector('.bpck').checked=true}
  else if(t.id==='bpreview')bpReview();else if(t.id==='bpconfirm')bpConfirm();
  else if(t.id==='bpcancel'){bpS.pending=null;$('bpconf').innerHTML=''}else if(t.id==='bpreset')bpReset()});
-$('bp').addEventListener('input',e=>{if(e.target.classList.contains('bpin')){e.target.dataset.cls='manual';const c=e.target.closest('tr').querySelector('.bpck');if(e.target.value!=='')c.checked=true}});
+$('bp').addEventListener('input',e=>{if(e.target.classList.contains('bpin')){e.target.dataset.cls='manual';e.target.dataset.ex='';const c=e.target.closest('tr').querySelector('.bpck');if(e.target.value!=='')c.checked=true}});
 
 setAll(P.border);
 </script></body></html>
