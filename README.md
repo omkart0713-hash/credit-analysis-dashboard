@@ -12,6 +12,12 @@ A browser-based tool that analyses an individual loan applicant and suggests whe
 - Stress tests: rate rise, income fall, job loss
 - Suggested analyst actions, grouped as High, Medium and Low priority
 - One-page A4 credit appraisal report with Print and Save as PDF
+- Smart Loan Improvement Advisor: ranks the borrower’s own weaknesses (FOIR, existing EMIs, LTV, savings, repayment history, card use, tenure, interest cost) and explains the why, benefit and action for each. Updates instantly and shows only relevant suggestions; healthy borrowers see what is working in their favour.
+
+## Smart Bank Policy Search
+Enter any bank name and a loan type. The dashboard sends a POST request with `bankName` and `loanType` (JSON) to the Cloudflare Worker and shows interest rates, fees, loan limits, tenure, minimum credit score, income and age criteria, eligibility text and source links. Official bank domains are listed first, conflicting or missing values are flagged, and nothing is applied to the calculations until you review and confirm each change. Applied limits can be reset in one click.
+
+The Worker must allow the page’s origin with CORS (`Access-Control-Allow-Origin`) and answer `OPTIONS` preflight requests.
 
 ## How to use
 Open `index.html` in any browser, or visit the live demo. Enter the applicant details on the left. The decision, risk score, ratios and reasons update as you type. Three sample profiles are available at the top.
